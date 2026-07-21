@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 批量文件管理工具 - GUI 版本
-基于 tkinter，复用 batch_manage.py 的核心逻辑
+基于 tkinter，支持三种模式：
+  1. 仅移动：目标后缀名不填，移动目录必填
+  2. 仅改后缀：目标后缀名必填，移动目录不填
+  3. 编号 + 移动 + 改后缀：两者都填
 """
 
 import tkinter as tk
@@ -103,6 +106,7 @@ class PlaceholderEntry(ttk.Entry):
         self.bind("<FocusIn>", self._on_focus_in)
         self.bind("<FocusOut>", self._on_focus_out)
         self.bind("<Return>", self._on_enter)
+        self.bind("<Tab>", self._on_tab)
 
     def _show_placeholder(self):
         self._is_placeholder = True
@@ -124,12 +128,17 @@ class PlaceholderEntry(ttk.Entry):
             self._show_placeholder()
 
     def _on_enter(self, event):
+        if self._is_placeholder or self.get().strip() == "":
+            self._fill_placeholder()
         if hasattr(self, "_submit_cb") and self._submit_cb:
             self._submit_cb()
 
+    def _on_tab(self, event):
+        self._on_enter(event)
+
     def get_real_value(self):
         if self._is_placeholder:
-            return self._placeholder
+            return ""
         return self.get()
 
     def set_value(self, value):
@@ -138,6 +147,12 @@ class PlaceholderEntry(ttk.Entry):
         self.delete(0, tk.END)
         if value:
             self.insert(0, value)
+
+    def _fill_placeholder(self):
+        self._is_placeholder = False
+        self.config(foreground="")
+        self.delete(0, tk.END)
+        self.insert(0, self._placeholder)
 
 
 # ============================================================
@@ -287,7 +302,7 @@ class BatchManageGUI:
         # 模式提示
         self.label_mode = ttk.Label(
             main,
-            text="模式: 仅移动",
+            text="模式：仅移动",
             background="#f5f5f5",
             foreground="#888",
             font=("Microsoft YaHei", 9),
@@ -322,15 +337,17 @@ class BatchManageGUI:
             entry.bind("<KeyRelease>", lambda e: self._update_mode_hint())
 
     def _on_field_submit(self):
-        """用户在某个字段按 Enter/Tab 时的回调"""
         pass
 
     def _update_mode_hint(self):
         target = self.entry_target_ext.get_real_value().strip()
-        if target:
-            self.label_mode.config(text="模式: 编号+移动+改后缀", foreground="#2e7d32")
+        dest = self.entry_dest_dir.get_real_value().strip()
+        if target and dest:
+            self.label_mode.config(text="模式：编号 + 移动 + 改后缀", foreground="#2e7d32")
+        elif target and not dest:
+            self.label_mode.config(text="模式：仅改后缀", foreground="#e65100")
         else:
-            self.label_mode.config(text="模式: 仅移动", foreground="#888")
+            self.label_mode.config(text="模式：仅移动", foreground="#888")
 
     def _browse_dir(self, entry_widget):
         dir_path = filedialog.askdirectory(title="选择目录")
@@ -382,32 +399,43 @@ class BatchManageGUI:
             messagebox.showerror("错误", "需要操作的目录不能为空")
             return
         if not Path(source_dir).exists():
-            messagebox.showerror("错误", f"目录不存在: {source_dir}")
-            return
-
-        dest_dir = dest_raw.strip().strip('"').strip("'")
-        if not dest_dir:
-            messagebox.showerror("错误", "移动到的目录不能为空")
+            messagebox.showerror("错误", f"目录不存在：{source_dir}")
             return
 
         target_ext = self._parse_target_ext(target_raw) if target_raw.strip() else None
-        mode = "仅移动" if not target_ext else "编号+移动+改后缀"
+        dest_dir = dest_raw.strip().strip('"').strip("'") if dest_raw.strip() else ""
+
+        if dest_dir and not Path(dest_dir).exists():
+            messagebox.showerror("错误", f"目标目录不存在：{dest_dir}")
+            return
+
+        if target_ext and dest_dir:
+            mode = "编号 + 移动 + 改后缀"
+        elif target_ext and not dest_dir:
+            mode = "仅改后缀"
+        else:
+            mode = "仅移动"
 
         self.btn_execute.config(state=tk.DISABLED)
         self._clear_log()
-        self._log(f"模式: {mode}")
-        self._log(f"源目录: {source_dir}")
-        self._log(f"目标目录: {dest_dir}")
-        self._log(f"自定义后缀: {', '.join(custom_exts)}")
+        self._log(f"模式：{mode}")
+        self._log(f"源目录：{source_dir}")
+        self._log(f"自定义后缀：{', '.join(custom_exts)}")
         if target_ext:
-            self._log(f"目标后缀: {target_ext}")
+            self._log(f"目标后缀：{target_ext}")
+        if dest_dir:
+            self._log(f"目标目录：{dest_dir}")
         self._log("-" * 40)
 
         try:
             if mode == "仅移动":
                 self._log("步骤 1/1: 移动文件...")
                 moved = move_files(source_dir, dest_dir, custom_exts)
-                self._log(f"完成！共移动 {len(moved)} 个文件")
+                self._log(f"完成！共移动 {len(moved)} 个文件到 '{dest_dir}'")
+            elif mode == "仅改后缀":
+                self._log("步骤 1/1: 修改后缀名...")
+                changed = change_extension(source_dir, custom_exts, target_ext)
+                self._log(f"完成！共修改了 {changed} 个文件的后缀名")
             else:
                 self._log("步骤 1/3: 升序编号重命名...")
                 renamed = rename_matched_files(source_dir, custom_exts)
@@ -434,7 +462,7 @@ class BatchManageGUI:
             self.root.after(0, self._show_complete_dialog)
 
         except Exception as e:
-            self._log(f"错误: {e}")
+            self._log(f"错误：{e}")
             messagebox.showerror("错误", str(e))
         finally:
             self.root.after(0, lambda: self.btn_execute.config(state=tk.NORMAL))
