@@ -203,8 +203,8 @@ class BatchManageGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("批量文件管理工具")
-        self.root.geometry("560x440")
-        self.root.resizable(False, False)
+        self.root.geometry("600x580")
+        self.root.resizable(True, True)
         self.root.configure(bg="#f5f5f5")
 
         self.history = {
