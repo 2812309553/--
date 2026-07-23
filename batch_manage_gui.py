@@ -208,11 +208,12 @@ class BatchManageGUI:
         self.root.configure(bg="#f5f5f5")
 
         self.history = {
-            "custom_exts": "",
-            "target_ext": "",
-            "source_dir": "",
-            "dest_dir": "",
-        }
+           "custom_exts": "",
+           "target_ext": "",
+           "source_dir": "",
+           "dest_dir": "",
+            "do_rename": False,
+       }
 
         self._build_ui()
         self._load_history()
@@ -300,6 +301,17 @@ class BatchManageGUI:
         btn_dst.pack(side=tk.RIGHT, padx=(4, 0))
 
         # 模式提示
+        # 编号复选框
+        self.var_do_rename = tk.BooleanVar(value=False)
+        cb_frame = ttk.Frame(main)
+        cb_frame.grid(row=5, column=0, columnspan=3, pady=(2, 4), sticky="w")
+        ttk.Checkbutton(
+            cb_frame,
+            text="是否编号重命名",
+            variable=self.var_do_rename,
+            command=lambda: self._update_mode_hint(),
+        ).pack(side=tk.LEFT)
+
         self.label_mode = ttk.Label(
             main,
             text="模式：仅移动",
@@ -307,7 +319,7 @@ class BatchManageGUI:
             foreground="#888",
             font=("Microsoft YaHei", 9),
         )
-        self.label_mode.grid(row=5, column=0, columnspan=3, pady=(4, 6), sticky="w")
+        self.label_mode.grid(row=6, column=0, columnspan=3, pady=(0, 6), sticky="w")
 
         # 日志区
         log_box = ttk.LabelFrame(main, text="操作日志", padding=6)
@@ -343,9 +355,11 @@ class BatchManageGUI:
         target = self.entry_target_ext.get_real_value().strip()
         dest = self.entry_dest_dir.get_real_value().strip()
         if target and dest:
-            self.label_mode.config(text="模式：编号 + 移动 + 改后缀", foreground="#2e7d32")
+            self.label_mode.config(text="模式：移动 + 改后缀", foreground="#2e7d32")
         elif target and not dest:
             self.label_mode.config(text="模式：仅改后缀", foreground="#e65100")
+        elif dest:
+            self.label_mode.config(text="模式：仅移动", foreground="#888")
         else:
             self.label_mode.config(text="模式：仅移动", foreground="#888")
 
@@ -409,45 +423,59 @@ class BatchManageGUI:
             messagebox.showerror("错误", f"目标目录不存在：{dest_dir}")
             return
 
-        if target_ext and dest_dir:
-            mode = "编号 + 移动 + 改后缀"
-        elif target_ext and not dest_dir:
-            mode = "仅改后缀"
-        else:
-            mode = "仅移动"
+        # 复选框控制是否编号
+        do_rename = self.var_do_rename.get()
+        steps = []
+        if dest_dir:
+            steps.append("移动")
+        if target_ext:
+            steps.append("改后缀")
+
+        if not steps:
+            messagebox.showinfo("提示", "未选择任何操作，请至少填写目标目录或目标后缀名")
+            self.btn_execute.config(state=tk.NORMAL)
+            return
+
+        mode_parts = []
+        if do_rename:
+            mode_parts.append("编号")
+        mode_parts.extend(steps)
+        mode_label = " + ".join(mode_parts)
 
         self.btn_execute.config(state=tk.DISABLED)
         self._clear_log()
-        self._log(f"模式：{mode}")
+        self._log(f"模式：{mode_label}")
         self._log(f"源目录：{source_dir}")
-        self._log(f"自定义后缀：{', '.join(custom_exts)}")
+        exts_str = ", ".join(custom_exts)
+        self._log(f"自定义后缀：{exts_str}")
         if target_ext:
             self._log(f"目标后缀：{target_ext}")
         if dest_dir:
             self._log(f"目标目录：{dest_dir}")
+        step_count = len(steps)
+        if do_rename:
+            step_count += 1
         self._log("-" * 40)
 
         try:
-            if mode == "仅移动":
-                self._log("步骤 1/1: 移动文件...")
-                moved = move_files(source_dir, dest_dir, custom_exts)
-                self._log(f"完成！共移动 {len(moved)} 个文件到 '{dest_dir}'")
-            elif mode == "仅改后缀":
-                self._log("步骤 1/1: 修改后缀名...")
-                changed = change_extension(source_dir, custom_exts, target_ext)
-                self._log(f"完成！共修改了 {changed} 个文件的后缀名")
-            else:
-                self._log("步骤 1/3: 升序编号重命名...")
+            step_idx = 0
+            if do_rename:
+                step_idx += 1
+                self._log(f"步骤 {step_idx}/{step_count}: 升序编号重命名...")
                 renamed = rename_matched_files(source_dir, custom_exts)
                 self._log(f"  重命名了 {len(renamed)} 个文件")
 
-                self._log("步骤 2/3: 移动文件...")
-                moved = move_files(source_dir, dest_dir, custom_exts)
-                self._log(f"  移动了 {len(moved)} 个文件")
-
-                self._log("步骤 3/3: 修改后缀名...")
-                changed = change_extension(dest_dir, custom_exts, target_ext)
-                self._log(f"  修改了 {changed} 个文件的后缀")
+            for step_name in steps:
+                step_idx += 1
+                if step_name == "移动":
+                    self._log(f"步骤 {step_idx}/{step_count}: 移动文件...")
+                    moved = move_files(source_dir, dest_dir, custom_exts)
+                    self._log(f"  移动了 {len(moved)} 个文件")
+                elif step_name == "改后缀":
+                    self._log(f"步骤 {step_idx}/{step_count}: 修改后缀名...")
+                    target_dir = dest_dir if dest_dir else source_dir
+                    changed = change_extension(target_dir, custom_exts, target_ext)
+                    self._log(f"  修改了 {changed} 个文件的后缀")
 
             self._log("-" * 40)
             self._log("全部操作完成！")
@@ -457,6 +485,7 @@ class BatchManageGUI:
             self.history["target_ext"] = self.entry_target_ext.get()
             self.history["source_dir"] = self.entry_source_dir.get()
             self.history["dest_dir"] = self.entry_dest_dir.get()
+            self.history["do_rename"] = do_rename
             self._save_history()
 
             self.root.after(0, self._show_complete_dialog)
@@ -466,6 +495,104 @@ class BatchManageGUI:
             messagebox.showerror("错误", str(e))
         finally:
             self.root.after(0, lambda: self.btn_execute.config(state=tk.NORMAL))
+
+        target_raw = self.entry_target_ext.get_real_value()
+        source_raw = self.entry_source_dir.get_real_value()
+        dest_raw = self.entry_dest_dir.get_real_value()
+
+        custom_exts = self._parse_custom_exts(custom_raw)
+        if not custom_exts:
+            messagebox.showerror("错误", "自定义后缀名不能为空")
+            return
+
+        source_dir = source_raw.strip().strip('"').strip("'")
+        if not source_dir:
+            messagebox.showerror("错误", "需要操作的目录不能为空")
+            return
+        if not Path(source_dir).exists():
+            messagebox.showerror("错误", f"目录不存在：{source_dir}")
+            return
+
+        target_ext = self._parse_target_ext(target_raw) if target_raw.strip() else None
+        dest_dir = dest_raw.strip().strip('"').strip("'") if dest_raw.strip() else ''
+
+        if dest_dir and not Path(dest_dir).exists():
+            messagebox.showerror("错误", f"目标目录不存在：{dest_dir}")
+            return
+
+        # 复选框控制是否编号
+        do_rename = self.var_do_rename.get()
+        steps = []
+        if dest_dir:
+            steps.append("移动")
+        if target_ext:
+            steps.append("改后缀")
+
+        if not steps:
+            messagebox.showinfo("提示", "未选择任何操作，请至少填写目标目录或目标后缀名")
+            self.btn_execute.config(state=tk.NORMAL)
+            return
+
+        mode_parts = []
+        if do_rename:
+            mode_parts.append("编号")
+        mode_parts.extend(steps)
+        mode_label = " + ".join(mode_parts)
+
+        self.btn_execute.config(state=tk.DISABLED)
+        self._clear_log()
+        self._log(f"模式：{mode_label}")
+        self._log(f"源目录：{source_dir}")
+        exts_str = ", ".join(custom_exts)
+        self._log(f"自定义后缀：{exts_str}")
+        if target_ext:
+            self._log(f"目标后缀：{target_ext}")
+        if dest_dir:
+            self._log(f"目标目录：{dest_dir}")
+        step_count = len(steps)
+        if do_rename:
+            step_count += 1
+        self._log("-" * 40)
+
+        try:
+            step_idx = 0
+            if do_rename:
+                step_idx += 1
+                self._log(f"步骤 {step_idx}/{step_count}: 升序编号重命名...")
+                renamed = rename_matched_files(source_dir, custom_exts)
+                self._log(f"  重命名了 {len(renamed)} 个文件")
+
+            for step_name in steps:
+                step_idx += 1
+                if step_name == "移动":
+                    self._log(f"步骤 {step_idx}/{step_count}: 移动文件...")
+                    moved = move_files(source_dir, dest_dir, custom_exts)
+                    self._log(f"  移动了 {len(moved)} 个文件")
+                elif step_name == "改后缀":
+                    self._log(f"步骤 {step_idx}/{step_count}: 修改后缀名...")
+                    target_dir = dest_dir if dest_dir else source_dir
+                    changed = change_extension(target_dir, custom_exts, target_ext)
+                    self._log(f"  修改了 {changed} 个文件的后缀")
+
+            self._log("-" * 40)
+            self._log("全部操作完成！")
+
+            # 保存历史
+            self.history["custom_exts"] = self.entry_custom_exts.get()
+            self.history["target_ext"] = self.entry_target_ext.get()
+            self.history["source_dir"] = self.entry_source_dir.get()
+            self.history["dest_dir"] = self.entry_dest_dir.get()
+            self.history["do_rename"] = do_rename
+            self._save_history()
+
+            self.root.after(0, self._show_complete_dialog)
+
+        except Exception as e:
+            self._log(f"错误：{e}")
+            messagebox.showerror("错误", str(e))
+        finally:
+            self.root.after(0, lambda: self.btn_execute.config(state=tk.NORMAL))
+
 
     def _show_complete_dialog(self):
         dialog = tk.Toplevel(self.root)
@@ -516,6 +643,9 @@ class BatchManageGUI:
             val = self.history.get(key, "")
             if val:
                 entry.set_value(val)
+        # 回填编号复选框状态
+        do_rename_val = self.history.get("do_rename", False)
+        self.var_do_rename.set(do_rename_val)
 
     def _save_history(self):
         try:
