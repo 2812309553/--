@@ -276,11 +276,15 @@ class BatchManageGUI:
         btn_src.pack(side=tk.RIGHT, padx=(4, 0))
 
         # 4. 移动到的目录
+        # 后缀统计标签区域（移至移动到的目录之前）
+        self.ext_tags_frame = ttk.Frame(main)
+        self.ext_tags_frame.grid(row=4, column=0, columnspan=3, pady=(6, 2), sticky="w")
+
         ttk.Label(
             main, text="移动到的目录:", background="#f5f5f5", font=("Microsoft YaHei", 10)
-        ).grid(row=4, column=0, sticky="w", pady=5)
+        ).grid(row=5, column=0, sticky="w", pady=5)
         frame_dst = ttk.Frame(main)
-        frame_dst.grid(row=4, column=1, columnspan=2, pady=5, padx=(6, 0), sticky="ew")
+        frame_dst.grid(row=5, column=1, columnspan=2, pady=5, padx=(6, 0), sticky="ew")
         frame_dst.columnconfigure(0, weight=1)
 
         self.entry_dest_dir = DroppableEntry(
@@ -304,9 +308,7 @@ class BatchManageGUI:
         # 编号复选框
         self.var_do_rename = tk.BooleanVar(value=False)
         ctrl_row = ttk.Frame(main)
-        self.ext_tags_frame = ttk.Frame(main)
-        self.ext_tags_frame.grid(row=4, column=0, columnspan=3, pady=(2, 0), sticky="w")
-        ctrl_row.grid(row=5, column=0, columnspan=3, pady=(2, 4), sticky="w")
+        ctrl_row.grid(row=6, column=0, columnspan=3, pady=(2, 4), sticky="w")
 
         ttk.Checkbutton(
             ctrl_row,
@@ -326,7 +328,7 @@ class BatchManageGUI:
 
         # 日志区
         log_box = ttk.LabelFrame(main, text="操作日志", padding=6)
-        log_box.grid(row=6, column=0, columnspan=3, sticky="ew", pady=6)
+        log_box.grid(row=7, column=0, columnspan=3, sticky="ew", pady=6)
         main.columnconfigure(1, weight=1)
 
         self.text_log = tk.Text(log_box, height=7, width=60, wrap=tk.WORD, font=("Consolas", 9))
@@ -337,7 +339,7 @@ class BatchManageGUI:
 
         # 按钮区
         btn_row = ttk.Frame(main)
-        btn_row.grid(row=7, column=0, columnspan=3, pady=(4, 0))
+        btn_row.grid(row=9, column=0, columnspan=3, pady=(4, 0))
 
         self.btn_execute = ttk.Button(
             btn_row, text="执 行", width=12, command=self._execute
@@ -353,17 +355,6 @@ class BatchManageGUI:
 
         # 源目录变更时触发后缀统计（点击浏览按钮或手动输入后失去焦点时）
         self.entry_source_dir.bind("<FocusOut>", lambda e: self._on_focus_out_source())
-        btn_src = tk.Button(
-            frame_src,
-            text="\U0001F4C1",
-            font=("Segoe UI Emoji", 12),
-            bg="#e0e0e0",
-            bd=1,
-            relief=tk.RAISED,
-            command=lambda: self._browse_dir(self.entry_source_dir),
-            width=3,
-        )
-        btn_src.pack(side=tk.RIGHT, padx=(4, 0))
 
     def _on_field_submit(self):
         pass
