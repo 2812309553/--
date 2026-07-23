@@ -1,7 +1,7 @@
 {
-  "custom_exts": ".snrj,.zip,7z,rar,mp4",
+  "custom_exts": ".snrj,.zip,.mp4,snrj",
   "target_ext": "",
   "source_dir": "D:/备份/input",
   "dest_dir": "D:/备份/output",
-  "do_rename": false
+  "do_rename": true
 }

@@ -304,6 +304,8 @@ class BatchManageGUI:
         # 编号复选框
         self.var_do_rename = tk.BooleanVar(value=False)
         ctrl_row = ttk.Frame(main)
+        self.ext_tags_frame = ttk.Frame(main)
+        self.ext_tags_frame.grid(row=4, column=0, columnspan=3, pady=(2, 0), sticky="w")
         ctrl_row.grid(row=5, column=0, columnspan=3, pady=(2, 4), sticky="w")
 
         ttk.Checkbutton(
@@ -314,13 +316,13 @@ class BatchManageGUI:
         ).pack(side=tk.LEFT)
 
         self.label_mode = ttk.Label(
-            main,
+            ctrl_row,
             text="模式：仅移动",
             background="#f5f5f5",
             foreground="#888",
             font=("Microsoft YaHei", 9),
         )
-        self.label_mode.grid(row=5, column=1, columnspan=2, sticky="w", padx=(15, 0))
+        self.label_mode.pack(side=tk.LEFT, padx=(15, 0))
 
         # 日志区
         log_box = ttk.LabelFrame(main, text="操作日志", padding=6)
@@ -349,8 +351,28 @@ class BatchManageGUI:
                       self.entry_source_dir, self.entry_dest_dir]:
             entry.bind("<KeyRelease>", lambda e: self._update_mode_hint())
 
+        # 源目录变更时触发后缀统计（点击浏览按钮或手动输入后失去焦点时）
+        self.entry_source_dir.bind("<FocusOut>", lambda e: self._on_focus_out_source())
+        btn_src = tk.Button(
+            frame_src,
+            text="\U0001F4C1",
+            font=("Segoe UI Emoji", 12),
+            bg="#e0e0e0",
+            bd=1,
+            relief=tk.RAISED,
+            command=lambda: self._browse_dir(self.entry_source_dir),
+            width=3,
+        )
+        btn_src.pack(side=tk.RIGHT, padx=(4, 0))
+
     def _on_field_submit(self):
         pass
+
+    def _on_focus_out_source(self):
+        """焦点离开源目录输入框时触发后缀统计"""
+        raw = self.entry_source_dir.get_real_value()
+        if raw.strip():
+            self._scan_source_directory()
 
     def _update_mode_hint(self):
         target = self.entry_target_ext.get_real_value().strip()
@@ -366,9 +388,12 @@ class BatchManageGUI:
 
     def _browse_dir(self, entry_widget):
         dir_path = filedialog.askdirectory(title="选择目录")
-        if dir_path:
+        if dir_path and entry_widget:
             entry_widget.set_value(dir_path)
             self._update_mode_hint()
+            # 如果是源目录输入框，触发后缀统计
+            if entry_widget is self.entry_source_dir:
+                self._scan_source_directory()
 
     def _log(self, msg):
         self.text_log.insert(tk.END, msg + "\n")
@@ -567,6 +592,91 @@ class BatchManageGUI:
             self._fill_from_history()
         except Exception:
             pass
+
+
+    def _on_drop_source(self, event):
+        """处理拖拽到源目录输入框"""
+        paths = getattr(event, "data", None)
+        if paths is None:
+            return
+        import re
+        matches = re.findall(r"{(.*?)}", paths)
+        if matches:
+            path = matches[0]
+            p = Path(path)
+            if p.is_dir():
+                if self.entry_source_dir._is_placeholder:
+                    self.entry_source_dir._hide_placeholder()
+                self.entry_source_dir.delete(0, tk.END)
+                self.entry_source_dir.insert(0, path)
+                self._scan_source_directory()
+
+    def _scan_source_directory(self):
+        """扫描源目录，显示后缀名统计标签"""
+        source_raw = self.entry_source_dir.get_real_value()
+        source_dir = source_raw.strip().strip('"').strip("'")
+
+        # 清除旧标签
+        for widget in self.ext_tags_frame.winfo_children():
+            widget.destroy()
+
+        if not source_dir:
+            return
+
+        src_path = Path(source_dir)
+        if not src_path.exists():
+            return
+
+        # 统计后缀名
+        ext_counts = {}
+        for f in src_path.rglob("*"):
+            if f.is_file() and f.suffix.lower():
+                ext = f.suffix.lower()
+                ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+        if not ext_counts:
+            return
+
+        # 按文件名排序
+        sorted_exts = sorted(ext_counts.items(), key=lambda x: x[0])
+
+        for ext, count in sorted_exts:
+            label_text = f"{ext}_{count}"
+            tag_btn = tk.Button(
+                self.ext_tags_frame,
+                text=label_text,
+                font=("Microsoft YaHei", 9),
+                bg="#e0f0ff",
+                fg="#0066cc",
+                bd=1,
+                relief=tk.RAISED,
+                cursor="hand2",
+                command=lambda e=ext: self._on_ext_tag_click(e),
+            )
+            tag_btn.pack(side=tk.LEFT, padx=(0, 6), pady=2)
+
+    def _on_ext_tag_click(self, ext):
+        """点击后缀统计标签，追加到自定义后缀名"""
+        current = self.entry_custom_exts.get_real_value()
+        current_stripped = current.strip()
+
+        # 检查是否已存在
+        existing_exts = [e.strip().lstrip(".") for e in current_stripped.split(",") if e.strip()]
+        clean_ext = ext.lstrip(".")
+        if clean_ext in existing_exts:
+            return
+
+        if current_stripped:
+            new_value = current_stripped + "," + ext
+        else:
+            new_value = ext
+
+        # 如果当前是占位符状态，先隐藏
+        if self.entry_custom_exts._is_placeholder:
+            self.entry_custom_exts._hide_placeholder()
+
+        self.entry_custom_exts.delete(0, tk.END)
+        self.entry_custom_exts.insert(0, new_value)
 
     def run(self):
         self.root.mainloop()
